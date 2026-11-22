@@ -1,5 +1,5 @@
 #include <format>
-#include <vector>
+#include <stdlib.h>
 #include <iostream>
 #include <algorithm>
 #include <SDL3/SDL.h>
@@ -60,7 +60,7 @@ void renderTimer(SDL_Renderer *renderer, SDL_Texture *spritesheet, TTF_Font *fon
 }
 
 bool initialize(SDL_Window *&window, SDL_Renderer *&renderer) {
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         std::cerr << SDL_GetError() << std::endl;
         return false;
     }
@@ -113,7 +113,7 @@ void quit(SDL_Window *&window, SDL_Renderer *&renderer) {
 // Continued dev 5:00 PM
 // Paused dev 6:54 PM
 // Continued dev 11:16 PM
-// Paused dev 12:03 AM
+// Paused dev 1:01 AM
 int main(int, char *[]) {
     SDL_Window *window;
     SDL_Renderer *renderer;
@@ -125,14 +125,35 @@ int main(int, char *[]) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error opening fonts", SDL_GetError(), window);
     }
 
-    SDL_Texture *spritesheet = IMG_LoadTexture(renderer, "./assets/spritesheet.png");
-    if (!spritesheet) {
+    SDL_Texture *imgSprites = IMG_LoadTexture(renderer, "./assets/sprites.png");
+    if (!imgSprites) {
         std::cerr << SDL_GetError() << std::endl;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error loading textures", SDL_GetError(), window);
     }
 
-    Sharpener sharpener(spritesheet, {95, 364});
-    Magazine pencilmag(spritesheet, {(sharpener.position.x+sprsheet::sharpener.w*0.8f-12), 0});
+    SDL_AudioSpec audioWavSpec;
+    Uint8 *audioWavBuffer = NULL;
+    Uint32 audioWavLength = 0;
+    if (!SDL_LoadWAV("./assets/OneStepAtATIme - Alex McCulloch.wav", &audioWavSpec, &audioWavBuffer, &audioWavLength)) {
+        std::cerr << SDL_GetError() << std::endl;
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error loading audio", SDL_GetError(), window);
+    }
+
+    SDL_AudioStream *audioStream = SDL_OpenAudioDeviceStream(
+        SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+        &audioWavSpec,
+        NULL, NULL
+    );
+    if (!audioStream) {
+        std::cerr << SDL_GetError() << std::endl;
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error opening audio device stream", SDL_GetError(), window);
+    }
+
+    Sharpener sharpener(imgSprites, {95, 364});
+    Magazine pencilmag(imgSprites, {(sharpener.position.x+sprsheet::sharpener.w*0.8f-12), 0});
+
+    int keyCurrent = rand() % 3 + 1;
+    int keyNext = rand() % 3 + 1;
 
     uint64_t clockNow = SDL_GetPerformanceCounter(), clockLast = clockNow;
     float frequency = SDL_GetPerformanceFrequency();
@@ -145,6 +166,15 @@ int main(int, char *[]) {
         clockLast = clockNow;
         timeElapsed += deltaTime;
 
+        bool settled = (pencilmag.lasttar() == pencilmag.lastpos());
+        if (!settled) sharpener.activeArrow = 0;
+        else sharpener.activeArrow = keyCurrent;
+
+        if (SDL_GetAudioStreamQueued(audioStream) == 0) {
+            SDL_PutAudioStreamData(audioStream, audioWavBuffer, audioWavLength);
+            SDL_ResumeAudioStreamDevice(audioStream);
+        }
+
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
@@ -156,21 +186,19 @@ int main(int, char *[]) {
                     if (event.key.scancode == SDL_SCANCODE_Q)
                         running = false;
                     
-                    // Demo behavior
-                    if (event.key.scancode == SDL_SCANCODE_A || event.key.scancode == SDL_SCANCODE_LEFT) {
-                        sharpener.activeArrow = 1;
-                        if (pencilmag.lasttar() == pencilmag.lastpos() && pencilmag.lastpos().x <= -50) sharpener.sharpen(32.0f);
+                    int keyPressed = 0;
+                    if (event.key.scancode == SDL_SCANCODE_A) keyPressed = 1;
+                    if (event.key.scancode == SDL_SCANCODE_LEFT) keyPressed = 1;
+                    if (event.key.scancode == SDL_SCANCODE_W) keyPressed = 2;
+                    if (event.key.scancode == SDL_SCANCODE_UP) keyPressed = 2;
+                    if (event.key.scancode == SDL_SCANCODE_D) keyPressed = 3;
+                    if (event.key.scancode == SDL_SCANCODE_RIGHT) keyPressed = 3;
+
+                    if (keyPressed == keyCurrent && settled) {
+                        if (pencilmag.lastpos().x <= -50) sharpener.sharpen(32.0f);
                         pencilmag.progress(64.0f);
-                    } else if (event.key.scancode == SDL_SCANCODE_W || event.key.scancode == SDL_SCANCODE_UP) {
-                        sharpener.activeArrow = 2;
-                        if (pencilmag.lasttar() == pencilmag.lastpos() && pencilmag.lastpos().x <= -50) sharpener.sharpen(32.0f);
-                        pencilmag.progress(64.0f);
-                    } else if (event.key.scancode == SDL_SCANCODE_D || event.key.scancode == SDL_SCANCODE_RIGHT) {
-                        sharpener.activeArrow = 3;
-                        if (pencilmag.lasttar() == pencilmag.lastpos() && pencilmag.lastpos().x <= -50) sharpener.sharpen(32.0f);
-                        pencilmag.progress(64.0f);
-                    } else {
-                        sharpener.activeArrow = 0;
+                        keyCurrent = keyNext;
+                        keyNext = rand() % 3 + 1;
                     }
 
                     break;
@@ -185,7 +213,7 @@ int main(int, char *[]) {
         pencilmag.update(deltaTime);
 
         renderBackground(renderer);
-        renderTimer(renderer, spritesheet, fontSoraBold, timeElapsed);
+        renderTimer(renderer, imgSprites, fontSoraBold, timeElapsed);
 
         sharpener.render(renderer);
         pencilmag.render(renderer);
@@ -193,9 +221,11 @@ int main(int, char *[]) {
         SDL_RenderPresent(renderer);
     }
 
-    SDL_DestroyTexture(spritesheet);
+    SDL_DestroyAudioStream(audioStream);
+    SDL_free(audioWavBuffer);
+    SDL_DestroyTexture(imgSprites);
     TTF_CloseFont(fontSoraBold);
-    
     quit(window, renderer);
+
     return 0;
 }
