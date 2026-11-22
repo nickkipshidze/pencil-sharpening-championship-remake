@@ -60,47 +60,91 @@ void renderTimer(SDL_Renderer *renderer, SDL_Texture *spritesheet, TTF_Font *fon
 class Sharpener {
     private:
         SDL_Texture *texture;
-        SDL_FRect srcrect;
-        SDL_FRect dstrect;
+
+        SDL_FRect srcSharpenerLayer0;
+        SDL_FRect dstSharpenerLayer0;
+
+        SDL_FRect srcSharpenerLayer1;
+        SDL_FRect dstSharpenerLayer1;
+
+        SDL_FRect srcSharpenerLayer2;
+        SDL_FRect dstSharpenerLayer2;
+
+        SDL_FRect srcScrap;
+        SDL_FRect dstScrap;
+
+        float scrapAngle = 0.0f;
 
     public:
         glm::vec2 position;
 
         Sharpener(SDL_Texture *texture, glm::vec2 position) : texture(texture), position(position) {
-            this->srcrect = sprsheet::sharpener;
-            this->dstrect = sprsheet::sharpener;
-            this->dstrect.x = position.x;
-            this->dstrect.y = position.y;
-            this->dstrect.w *= 0.8f;
-            this->dstrect.h *= 0.8f;
+            // This is really unpleasant to look at
+            // Very hacky way of layering
+            // So that the pencil scrap comes out of the sharpener in a neat way
+
+            this->srcSharpenerLayer0 = sprsheet::sharpener;
+            this->dstSharpenerLayer0 = sprsheet::sharpener;
+            this->dstSharpenerLayer0.w = this->srcSharpenerLayer0.w*0.8f;
+            this->dstSharpenerLayer0.h = this->srcSharpenerLayer0.h*0.8f;
+
+            this->srcSharpenerLayer1 = this->srcSharpenerLayer0;
+            this->srcSharpenerLayer1.w = sprsheet::sharpener.w-11;
+            this->srcSharpenerLayer1.h = sprsheet::sharpener.h-13;
+            this->dstSharpenerLayer1 = this->dstSharpenerLayer0;
+            this->dstSharpenerLayer1.w = this->srcSharpenerLayer1.w*0.8f;
+            this->dstSharpenerLayer1.h = this->srcSharpenerLayer1.h*0.8f;
+
+            this->srcSharpenerLayer2 = this->srcSharpenerLayer0;
+            this->srcSharpenerLayer2.w = sprsheet::sharpener.w-11;
+            this->srcSharpenerLayer2.h = sprsheet::sharpener.h-86;
+            this->dstSharpenerLayer2 = this->dstSharpenerLayer0;
+            this->dstSharpenerLayer2.w = this->srcSharpenerLayer2.w*0.8f;
+            this->dstSharpenerLayer2.h = this->srcSharpenerLayer2.h*0.8f;
+
+            this->srcScrap = sprsheet::scrap;
+            this->dstScrap = sprsheet::scrap;
+            this->dstScrap.x = position.x-240;
+            this->dstScrap.y = position.y+40;
+            this->dstScrap.w = this->srcScrap.w*0.8f;
+            this->dstScrap.h = this->srcScrap.h*0.8f;
         }
 
         ~Sharpener() {}
 
         void update(float deltaTime) {
-            this->dstrect.x = this->position.x;
-            this->dstrect.y = this->position.y;
+            this->dstSharpenerLayer0.x = this->position.x;
+            this->dstSharpenerLayer0.y = this->position.y;
+            this->dstSharpenerLayer1.x = this->position.x;
+            this->dstSharpenerLayer1.y = this->position.y;
+            this->dstSharpenerLayer2.x = this->position.x;
+            this->dstSharpenerLayer2.y = this->position.y;
+
+            this->scrapAngle += 1024.0f * deltaTime;
         }
 
         void render(SDL_Renderer *renderer, int layer=1) {
             if (layer == 0) {
-                SDL_RenderTexture(renderer, this->texture, &this->srcrect, &this->dstrect);
+                SDL_RenderTexture(
+                    renderer, this->texture,
+                    &this->srcSharpenerLayer0, &this->dstSharpenerLayer0
+                );
             } else if (layer == 1) {
-                SDL_FRect srcrectCropped = this->srcrect;
-                srcrectCropped.w = sprsheet::sharpener.w-11;
-                srcrectCropped.h = sprsheet::sharpener.h-13;
-                SDL_FRect dstrectCropped = this->dstrect;
-                dstrectCropped.w = srcrectCropped.w*0.8f;
-                dstrectCropped.h = srcrectCropped.h*0.8f;
-                SDL_RenderTexture(renderer, this->texture, &srcrectCropped, &dstrectCropped);
-            } else if (layer == 3) {
-                SDL_FRect srcrectCropped = this->srcrect;
-                srcrectCropped.w = sprsheet::sharpener.w;
-                srcrectCropped.h = sprsheet::sharpener.h-86;
-                SDL_FRect dstrectCropped = this->dstrect;
-                dstrectCropped.w = srcrectCropped.w*0.8f;
-                dstrectCropped.h = srcrectCropped.h*0.8f;
-                SDL_RenderTexture(renderer, this->texture, &srcrectCropped, &dstrectCropped);
+                SDL_RenderTexture(
+                    renderer, this->texture,
+                    &this->srcSharpenerLayer1, &this->dstSharpenerLayer1
+                );
+            } else if (layer == 2) {
+                SDL_FPoint center = {this->dstScrap.w/2, 7};
+                SDL_RenderTextureRotated(
+                    renderer, this->texture,
+                    &this->srcScrap, &this->dstScrap,
+                    this->scrapAngle, &center, SDL_FLIP_NONE
+                );
+                SDL_RenderTexture(
+                    renderer, this->texture,
+                    &this->srcSharpenerLayer2, &this->dstSharpenerLayer2
+                );
             }
         }
 };
@@ -203,7 +247,8 @@ int main(int argc, char *argv[]) {
         SDL_FRect dstrectTime = {mousePosition.x-400, mousePosition.y-25, sprsheet::pencilGreen.w/1.2f, sprsheet::pencilGreen.h/1.2f};
         SDL_RenderTexture(renderer, spritesheet, &sprsheet::pencilGreen, &dstrectTime);
 
-        sharpener.render(renderer, 3);
+        sharpener.render(renderer, 1);
+        sharpener.render(renderer, 2);
         
         SDL_RenderPresent(renderer);
     }
