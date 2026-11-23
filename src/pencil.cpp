@@ -6,8 +6,8 @@ Magazine::Magazine(SDL_Texture *texture, glm::vec2 position, float scale) : text
     this->dstPencil = {0, 0, this->srcPencil.w*scale, this->srcPencil.h*scale};
 
     for (int i{0}; i<this->count; i++) {
-        this->pencilPositions.push_back({130, (this->vsize*i)});
-        this->pencilTargets.push_back({130, (this->vsize*i)});
+        this->pencilPositions.push_back({140, -this->vsize+(this->vsize*i)});
+        this->pencilTargets.push_back({140, -this->vsize+(this->vsize*i)});
     }
 }
 
@@ -15,7 +15,8 @@ Magazine::~Magazine() {}
 
 void Magazine::update(float deltaTime) {
     float speed = 8.0f;
-    
+    if (this->empty) return;
+
     for (int i{0}; i < (int)this->pencilPositions.size(); ++i) {
         auto &current = this->pencilPositions[i];
         auto &target = this->pencilTargets[i];
@@ -40,31 +41,33 @@ void Magazine::addtop() {
 }
 
 void Magazine::shiftnext() {
+    if (this->empty) return;
     for (int i{0}; i < (int)this->pencilTargets.size()-1; ++i) {
         auto &current = this->pencilTargets[i];
         auto &next = this->pencilTargets[i+1];
         current = next;
     }
-    this->pencilTargets[this->pencilTargets.size()-1] = {130, this->targety};
+    this->pencilTargets[this->pencilTargets.size()-1] = {120, this->targety};
 }
 
 void Magazine::poplast() {
     this->pencilTargets.pop_back();
     this->pencilPositions.pop_back();
+    if (this->pencilTargets.size() == 0) this->empty = true;
 }
 
 glm::vec2 &Magazine::lasttar() {
+    if (this->empty) return this->zero;
     return this->pencilTargets[this->pencilTargets.size()-1];
 }
 
 glm::vec2 &Magazine::lastpos() {
+    if (this->empty) return this->zero;
     return this->pencilPositions[this->pencilPositions.size()-1];
 }
 
 void Magazine::progress(float stepsize) {
-    if (this->pencilTargets.size() <= 2)
-        this->addtop();
-
+    if (this->empty) return;
     if (!(this->lastpos().y == targety)) {
         if (this->lastpos() == this->lasttar())
             shiftnext();
