@@ -23,5 +23,5 @@ namespace sprsheet {
     inline SDL_FRect menuSharpener = {0, 0, 205, 152};
     inline SDL_FRect menuShaving = {205, 0, 103, 132};
     inline SDL_FRect menuPencils = {308, 0, 259, 195};
-    inline SDL_FRect menuTitle = {0, 195, 829, 274};
+    inline SDL_FRect menuTitle = {0, 196, 829, 274};
 };
