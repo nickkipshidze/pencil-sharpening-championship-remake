@@ -20,13 +20,14 @@ SDL_FColor hexToColor(unsigned int hex) {
     };
 }
 
-void renderBackground(SDL_Renderer *renderer) {
+void renderBackground(SDL_Renderer *renderer, float alpha=1.0f) {
     int s = 64;
     for (int y{0}; y<conf::resolution.y; y+=s) {
         for (int x{0}; x<conf::resolution.x; x+=s) {
             SDL_FColor color;
             if (((y%(s*2) == 0)*s+x)%(s*2) == 0) color = hexToColor(0xFFE203FF);
             else color = hexToColor(0xFED600FF);
+            color.a = alpha;
             SDL_FRect rect = {(float)x, (float)y, (float)s, (float)s};
             SDL_SetRenderDrawColor(renderer, color.r*255, color.g*255, color.b*255, color.a*255);
             SDL_RenderFillRect(renderer, &rect);
@@ -58,6 +59,77 @@ void renderTimer(SDL_Renderer *renderer, SDL_Texture *spritesheet, TTF_Font *fon
         {26, 26, 26, 255}
     );
 }
+
+class MainMenu {
+    private:
+        bool closing = false;
+
+        SDL_FRect positionSharpener = {
+            43.0f, 45.0f,
+            sprsheet::menuSharpener.w, sprsheet::menuSharpener.h
+        };
+        SDL_FRect positionShaving = {
+            195.0f, 545.0f,
+            sprsheet::menuShaving.w, sprsheet::menuShaving.h
+        };
+        SDL_FRect positionPencils = {
+            796.0f, 29.0f,
+            sprsheet::menuPencils.w, sprsheet::menuPencils.h
+        };
+        SDL_FRect positionTitle = {
+            125.5f, 200.5f,
+            sprsheet::menuTitle.w, sprsheet::menuTitle.h
+        };
+        SDL_FRect positionPressStart = {
+            412.0f, 511.0f,
+            0, 0
+        };
+
+        SDL_Texture *texture;
+        TTF_Font *font;
+        float animationTimer = 0.0f;
+        float closeTimer = 1.0f;
+    
+    public:
+        bool visible = true;
+
+        MainMenu(SDL_Texture *texture, TTF_Font *font) : texture(texture), font(font) {}
+
+        ~MainMenu() {}
+
+        void close() {
+            this->closing = true;
+        }
+
+        void update(float deltaTime) {
+            this->animationTimer += deltaTime;
+            if (this->closing)
+                this->closeTimer -= deltaTime;
+            if (this->closeTimer <= 0)
+                this->visible = false;
+        }
+
+        void render(SDL_Renderer *renderer) {
+            Uint8 alpha = (Uint8)(SDL_clamp(255.0f*this->closeTimer, 0, 255));
+            float yOffset = SDL_sinf(this->animationTimer)*10.0f;
+
+            if (this->visible) {
+                renderBackground(renderer, this->closeTimer);
+                SDL_SetTextureAlphaMod(this->texture, alpha);
+                SDL_RenderTexture(renderer, this->texture,&sprsheet::menuTitle, &this->positionTitle);
+                SDL_RenderTexture(renderer, this->texture,&sprsheet::menuSharpener, &this->positionSharpener);
+                SDL_RenderTexture(renderer, this->texture,&sprsheet::menuPencils, &this->positionPencils);
+                SDL_RenderTexture(renderer, this->texture,&sprsheet::menuShaving, &this->positionShaving);
+                SDL_SetTextureAlphaMod(this->texture, 255);
+                if (alpha > 5)
+                    renderText(
+                        renderer, this->font, "Press Start",
+                        {this->positionPressStart.x, this->positionPressStart.y+yOffset},
+                        {0, 0, 0, alpha}
+                    );
+            }
+        }
+};
 
 bool initialize(SDL_Window *&window, SDL_Renderer *&renderer) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
@@ -114,6 +186,8 @@ void quit(SDL_Window *&window, SDL_Renderer *&renderer) {
 // Paused dev 6:54 PM
 // Continued dev 11:16 PM
 // Paused dev 1:01 AM
+// Continued dev 7:53 PM
+// Paused dev 9:15 PM
 int main(int, char *[]) {
     SDL_Window *window;
     SDL_Renderer *renderer;
@@ -125,8 +199,10 @@ int main(int, char *[]) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error opening fonts", SDL_GetError(), window);
     }
 
+    SDL_Texture *imgMenu = IMG_LoadTexture(renderer, "./assets/menu.png");
     SDL_Texture *imgSprites = IMG_LoadTexture(renderer, "./assets/sprites.png");
-    if (!imgSprites) {
+
+    if (!imgMenu || !imgSprites) {
         std::cerr << SDL_GetError() << std::endl;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error loading textures", SDL_GetError(), window);
     }
@@ -149,6 +225,7 @@ int main(int, char *[]) {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Error opening audio device stream", SDL_GetError(), window);
     }
 
+    MainMenu menuScreen(imgMenu, fontSoraBold);
     Sharpener sharpener(imgSprites, {95, 364});
     Magazine pencilmag(imgSprites, {(sharpener.position.x+sprsheet::sharpener.w*0.8f-12), 0});
 
@@ -164,9 +241,10 @@ int main(int, char *[]) {
         clockNow = SDL_GetPerformanceCounter();
         float deltaTime = std::clamp((float)(clockNow-clockLast)/frequency, 0.0f, 1.0f);
         clockLast = clockNow;
-        timeElapsed += deltaTime;
-
-        bool settled = (pencilmag.lasttar() == pencilmag.lastpos());
+        
+        bool settled;
+        if (!pencilmag.empty) settled = (pencilmag.lasttar() == pencilmag.lastpos());
+        else settled = false;
         if (!settled) sharpener.activeArrow = 0;
         else sharpener.activeArrow = keyCurrent;
 
@@ -186,6 +264,11 @@ int main(int, char *[]) {
                     if (event.key.scancode == SDL_SCANCODE_Q)
                         running = false;
                     
+                    if (event.key.scancode == SDL_SCANCODE_SPACE)
+                        menuScreen.close();
+                    
+                    if (menuScreen.visible == true) break;
+
                     int keyPressed = 0;
                     if (event.key.scancode == SDL_SCANCODE_A) keyPressed = 1;
                     if (event.key.scancode == SDL_SCANCODE_LEFT) keyPressed = 1;
@@ -213,10 +296,14 @@ int main(int, char *[]) {
         pencilmag.update(deltaTime);
 
         renderBackground(renderer);
+        if (menuScreen.visible == false && !pencilmag.empty) timeElapsed += deltaTime;
         renderTimer(renderer, imgSprites, fontSoraBold, timeElapsed);
 
         sharpener.render(renderer);
         pencilmag.render(renderer);
+
+        menuScreen.update(deltaTime);
+        menuScreen.render(renderer);
 
         SDL_RenderPresent(renderer);
     }
@@ -224,6 +311,7 @@ int main(int, char *[]) {
     SDL_DestroyAudioStream(audioStream);
     SDL_free(audioWavBuffer);
     SDL_DestroyTexture(imgSprites);
+    SDL_DestroyTexture(imgMenu);
     TTF_CloseFont(fontSoraBold);
     quit(window, renderer);
 
